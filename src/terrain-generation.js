@@ -37,10 +37,10 @@ export function generateTerrain(
 
     // Start with random values in the corners
     const scale = roughness*size / 2;
-    map[0][0] = top ? top[0] : right ? right[0] : rand(scale);
-    map[max][0] = bottom ? bottom[0] : right ? right[max] : rand(scale);
-    map[max][max] = bottom ? bottom[max] : left ? left[max] : rand(scale);
-    map[0][max] = top ? top[max] : left ? left[0] : rand(scale);
+    map[0][0] = top ? top[0] : left ? left[0] : rand(scale);
+    map[0][max] = top ? top[max] : right ? right[0] : rand(scale);
+    map[max][0] = bottom ? bottom[0] : left ? left[max] : rand(scale);
+    map[max][max] = bottom ? bottom[max] : right ? right[max] : rand(scale);
 
     // Recursively run square-diamond algorithm
     divide(max);
@@ -52,8 +52,8 @@ export function generateTerrain(
     // They should be already fairly close, but the median filter may have moved them slightly.
     if (top) { for (let y = 0; y < size; y++) { smoothed[0][y] = top[y]; } }
     if (bottom) { for (let y = 0; y < size; y++) { smoothed[max][y] = bottom[y]; } }
-    if (left) { for (let x = 0; x < size; x++) { smoothed[x][max] = left[x]; } }
-    if (right) { for (let x = 0; x < size; x++) { smoothed[x][0] = right[x]; } }
+    if (left) { for (let x = 0; x < size; x++) { smoothed[x][0] = left[x]; } }
+    if (right) { for (let x = 0; x < size; x++) { smoothed[x][max] = right[x]; } }
 
     return smoothed;
 
@@ -73,8 +73,8 @@ export function generateTerrain(
             for (let x = (y + half) % sz; x <= max; x += sz) {
                 map[x][y] = (top && x === 0) ? top[y] :
                     (bottom && x === max) ? bottom[y] :
-                        (left && y === max) ? left[x] :
-                            (right && y === 0) ? right[x] :
+                        (left && y === 0) ? left[x] :
+                            (right && y === max) ? right[x] :
                                 rand(scl) + diamond(x, y, half);
             }
         }
@@ -116,14 +116,14 @@ export function extractBottom(terrain) { return terrain[terrain.length - 1]; }
  * @param {Array} terrain - The terrain data
  * @returns {Array} The left column of the terrain data
  */
-export function extractLeft(terrain) { return terrain.map(row => row[row.length - 1]); }
+export function extractLeft(terrain) { return terrain.map(row => row[0]); }
 
 /**
  * Extract the right column of the terrain data.
  * @param {Array} terrain - The terrain data
  * @returns {Array} The right column of the terrain data
  */
-export function extractRight(terrain) { return terrain.map(row => row[0]); }
+export function extractRight(terrain) { return terrain.map(row => row[row.length - 1]); }
 
 /**
  * Generate a random number between -scale and scale
