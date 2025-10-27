@@ -20,10 +20,11 @@ let renderer;
 let controls;
 let ambientLight;
 let directionalLight;
+let directionalLightHelper;
 let sky;
 
 // Time of day controls
-let manualTimeOfDay = 12; // Default to noon (12:00)
+let manualTimeOfDay = 12; // Default to noon
 let autoTimeEnabled = true;
 
 // Ground system variables
@@ -54,7 +55,7 @@ function FlightSim() {
     controls.dampingFactor = 0.05;
     controls.screenSpacePanning = false;
     controls.minDistance = 100;
-    controls.maxDistance = 5000;
+    controls.maxDistance = 6000;
     controls.maxPolarAngle = Math.PI / 2;
     controls.update();
     
@@ -92,6 +93,12 @@ function addLighting() {
     
     scene.add(directionalLight);
     scene.add(directionalLight.target);
+
+    // Add directional light helper to visualize the sun's position and direction
+    if (DEBUG) {
+        directionalLightHelper = new THREE.DirectionalLightHelper(directionalLight, 1000, 0xffff00);
+        scene.add(directionalLightHelper);
+    }
 }
 
 function createSky() {
@@ -124,7 +131,6 @@ function updateLighting() {
             updateTimeDisplay();
         }
     } else {
-        // Manual time control
         normalizedTime = manualTimeOfDay / 24;
     }
     
@@ -133,16 +139,23 @@ function updateLighting() {
     const sunElevation = Math.sin(sunAngle) * Math.PI / 2;
     
     const sunDistance = 5000;
+    
+    const phi = Math.PI / 2 - sunElevation;
+    const theta = sunAngle + Math.PI;
+    const sunPosition = new THREE.Vector3().setFromSphericalCoords(1, phi, theta);
+    
     directionalLight.position.set(
-        Math.cos(sunAngle) * Math.cos(sunElevation) * sunDistance,
-        Math.sin(sunElevation) * sunDistance,
-        Math.sin(sunAngle) * Math.cos(sunElevation) * sunDistance
+        sunPosition.x * sunDistance,
+        sunPosition.y * sunDistance,
+        sunPosition.z * sunDistance
     );
     
+    // Update the directional light helper
+    if (DEBUG && directionalLightHelper) {
+        directionalLightHelper.update();
+    }
+    
     if (sky) {
-        const phi = Math.PI / 2 - sunElevation;
-        const theta = sunAngle + Math.PI;
-        const sunPosition = new THREE.Vector3().setFromSphericalCoords(1, phi, theta);
         sky.material.uniforms.sunPosition.value = sunPosition;
     }
     
@@ -196,8 +209,6 @@ function initializeTimeControls() {
             manualTimeOfDay = parseFloat(event.target.value);
             updateTimeDisplay();
         });
-        
-        // Initialize the display
         updateTimeDisplay();
     }
     
@@ -294,7 +305,7 @@ function createTerrainSquare(gridX, gridZ) {
  * @returns 
  */
 function createTerrainGeometry(heightData) {
-    const size = heightData.length; // Should be 129 for TERRAIN_DETAIL = 7
+    const size = heightData.length;
     const geometry = new THREE.BufferGeometry();
     
     const vertices = [];
@@ -306,7 +317,7 @@ function createTerrainGeometry(heightData) {
         for (let j = 0; j < size; j++) {
             const x = (j / (size - 1) - 0.5) * SQUARE_SIZE;
             const z = (i / (size - 1) - 0.5) * SQUARE_SIZE;
-            const y = heightData[i][j] * 50; // Scale height appropriately
+            const y = heightData[i][j] * 50;
             
             vertices.push(x, y, z);
             uvs.push(j / (size - 1), i / (size - 1));
@@ -353,7 +364,7 @@ function updateTerrain() {
             }
         }
         
-        removeDistantTerrain();
+        removeDistantTerrain()
     }
 }
 
