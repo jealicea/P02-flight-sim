@@ -5,7 +5,7 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import planeModelUrl from './images/plane.glb';
 
-const WING_SPAN = 11; // meters
+// const WING_SPAN = 11; // meters
 const MAX_SPEED = 55; // m/s
 const MAX_ALTITUDE = 4200; // meters
 const GRAVITY = 9.81; // m/s^2
@@ -358,9 +358,11 @@ function createPlane() {
                 }
             });
             
-            // If propeller wasn't found by name, you can manually select it
-            // Uncomment and adjust the index if needed:
-            // propeller = planeModel.children[0]; // Adjust index to match your model structure
+            // If propeller wasn't found by name, create a custom propeller
+            if (!propeller) {
+                console.log('Creating custom propeller');
+                createPropeller();
+            }
             
             // Scale the model to match the original plane size (adjust as needed)
             planeModel.scale.set(2, 2, 2);
@@ -385,7 +387,51 @@ function createPlane() {
 }
 
 /**
- * Create a terrain square at the given grid coordinates
+ * Create a propeller on the nose of the plane
+ */
+function createPropeller() {
+    // Create a group for the propeller
+    propeller = new THREE.Group();
+    
+    // Create propeller blades
+    const bladeGeometry = new THREE.BoxGeometry(0.2, 3, 0.06); // thin, long blades (smaller)
+    const bladeMaterial = new THREE.MeshStandardMaterial({ 
+        color: 0x7C7C7D,
+        // metalness: 0.7,
+        // roughness: 0.3
+    });
+    
+    // Create two blades
+    const blade1 = new THREE.Mesh(bladeGeometry, bladeMaterial);
+    blade1.castShadow = true;
+    blade1.receiveShadow = true;
+    propeller.add(blade1);
+    
+    const blade2 = new THREE.Mesh(bladeGeometry, bladeMaterial);
+    blade2.rotation.z = Math.PI / 2; // Rotate 90 degrees for cross pattern
+    blade2.castShadow = true;
+    blade2.receiveShadow = true;
+    propeller.add(blade2);
+    
+    // Create propeller hub (center)
+    const hubGeometry = new THREE.CylinderGeometry(0.3, 0.3, 0.4, 16);
+    const hubMaterial = new THREE.MeshStandardMaterial({ 
+        color: 0x7C7C7D,
+        // metalness: 0.8,
+        // roughness: 0.2
+    });
+    const hub = new THREE.Mesh(hubGeometry, hubMaterial);
+    hub.rotation.x = Math.PI / 2;
+    hub.castShadow = true;
+    hub.receiveShadow = true;
+    propeller.add(hub);
+    propeller.position.set(0, 5, 0);
+    propeller.rotation.x = Math.PI / 2;
+    plane.add(propeller);
+}
+
+/**
+ * Create a terrain square at the givean grid coordinates
  * @param {number} gridX - The grid X coordinate
  * @param {number} gridZ - The grid Z coordinate
  */
@@ -665,7 +711,7 @@ function updateGUI() {
         const speedKmh = (planeSpeed * 3.6).toFixed(1);
         speedElement.textContent = speedKmh;
     }
-    
+
     // Update altitude display
     const altitudeElement = document.getElementById('altitude');
     if (altitudeElement) {
@@ -729,8 +775,8 @@ function animate(currentTime) {
     if (propeller) {
         // Propeller rotation speed is proportional to plane speed
         // Scale the speed to make it visually appealing (speed is in m/s)
-        const propellerSpeed = planeSpeed * 0.5; // Adjust multiplier for visual effect
-        propeller.rotation.z += propellerSpeed * 0.01; // Spin around Z-axis
+        const propellerSpeed = planeSpeed * 2; // Adjust multiplier for visual effect
+        propeller.rotation.z -= propellerSpeed * 0.01; // Spin around Z-axis (sideways rotation)
     }
 
     updateTerrain();
