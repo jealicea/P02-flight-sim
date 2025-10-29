@@ -2,6 +2,8 @@ import * as THREE from 'three';
 import { Sky } from 'three/addons/objects/Sky.js';
 import { generateTerrain, extractTop, extractBottom, extractLeft, extractRight } from './terrain-generation.js';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import planeModelUrl from './images/plane.glb';
 
 const WING_SPAN = 11; // meters
 const MAX_SPEED = 55; // m/s
@@ -9,9 +11,9 @@ const MAX_ALTITUDE = 4200; // meters
 const GRAVITY = 9.81; // m/s^2
 const SQUARE_SIZE = 2000; // meters
 const TERRAIN_DETAIL = 8; // 2^8 + 1 = 257x257 vertices
-const TERRAIN_ROUGHNESS = 0.1; // Much lower for flatter terrain
+const TERRAIN_ROUGHNESS = 0.05; // Much lower for flatter terrain
 
-const USE_ORBIT_CONTROLS = true;
+const USE_ORBIT_CONTROLS = false;
 const DEBUG = true;
 
 let scene;
@@ -24,8 +26,8 @@ let directionalLightHelper;
 let sky;
 
 // Time of day controls
-let manualTimeOfDay = 12; // Default to noon
-let autoTimeEnabled = true;
+let manualTimeOfDay = 16; // Default to noon
+let autoTimeEnabled = false;
 
 // Ground system variables
 let terrainGrid = new Map(); 
@@ -33,6 +35,37 @@ let planePosX = 0;
 let planePosZ = 0;
 let currentGridX = 0;
 let currentGridZ = 0;
+
+// Plane variables
+let plane;
+let propeller;
+let planeSpeed = 0; // Current speed of the plane in m/s
+let planeAltitude = 200; // Current altitude of the plane in meters
+let thrust = 0.5; // Thrust as a percentage (0.0 to 1.0)
+
+// Plane physics and orientation
+let planeRotationX = 0; // Pitch
+let planeRotationY = 0; // Yaw
+let planeRotationZ = 0; // Roll
+let velocityX = -20; // Initial velocity [−20, 0, 0] m/s
+let velocityY = 0;
+let velocityZ = 0;
+let angularVelocityX = 0; // Pitch angular velocity (rad/s)
+let angularVelocityY = 0; // Yaw angular velocity (rad/s)
+let angularVelocityZ = 0; // Roll angular velocity (rad/s)
+
+// Keyboard controls state
+const keys = {
+    w: false, // Pitch up
+    s: false, // Pitch down
+    a: false, // Roll left
+    d: false, // Roll right
+    q: false, // Yaw left
+    e: false, // Yaw right
+    shift: false, // Increase throttle
+    ctrl: false, // Decrease throttle
+    space: false // Brake
+};
 
 function FlightSim() {
     scene = new THREE.Scene();
@@ -48,27 +81,70 @@ function FlightSim() {
     const container = document.getElementById('container');
     container.appendChild(renderer.domElement);
 
-    // Set up orbit controls
-    controls = new OrbitControls(camera, renderer.domElement);
-    controls.target.set(0, 0, 0);
-    controls.enableDamping = true;
-    controls.dampingFactor = 0.05;
-    controls.screenSpacePanning = false;
-    controls.minDistance = 100;
-    controls.maxDistance = 6000;
-    controls.maxPolarAngle = Math.PI / 2;
-    controls.update();
-    
-    camera.position.set(0, 800, 1500);
-    camera.lookAt(0, 0, 0);
+    if (USE_ORBIT_CONTROLS) {
+        // Set up orbit controls
+        controls = new OrbitControls(camera, renderer.domElement);
+        controls.target.set(0, 200, 0);
+        controls.enableDamping = true;
+        controls.dampingFactor = 0.05;
+        controls.screenSpacePanning = false;
+        controls.minDistance = 10;
+        controls.maxDistance = 5000;
+        controls.maxPolarAngle = Math.PI / 2;
+        controls.update();
+        
+        camera.position.set(0, 200, 1500);
+        camera.lookAt(0, 200, 0);
+    } else {
+        // Camera will follow the plane
+        camera.position.set(0, 800, 1500);
+    }
 
     addLighting();
     createSky();
     createGround();
+    createPlane();
+    setupKeyboardControls();
 }
 
 function render() {
     renderer.render(scene, camera);
+}
+
+/**
+ * Set up keyboard event listeners for plane controls
+ */
+function setupKeyboardControls() {
+    window.addEventListener('keydown', (event) => {
+        const key = event.key.toLowerCase();
+        
+        if (key === 'w') keys.w = true;
+        if (key === 's') keys.s = true;
+        if (key === 'a') keys.a = true;
+        if (key === 'd') keys.d = true;
+        if (key === 'q') keys.q = true;
+        if (key === 'e') keys.e = true;
+        if (event.shiftKey) keys.shift = true;
+        if (event.ctrlKey || event.metaKey) keys.ctrl = true;
+        if (key === ' ') {
+            keys.space = true;
+            event.preventDefault(); // Prevent page scroll
+        }
+    });
+    
+    window.addEventListener('keyup', (event) => {
+        const key = event.key.toLowerCase();
+        
+        if (key === 'w') keys.w = false;
+        if (key === 's') keys.s = false;
+        if (key === 'a') keys.a = false;
+        if (key === 'd') keys.d = false;
+        if (key === 'q') keys.q = false;
+        if (key === 'e') keys.e = false;
+        if (!event.shiftKey) keys.shift = false;
+        if (!event.ctrlKey && !event.metaKey) keys.ctrl = false;
+        if (key === ' ') keys.space = false;
+    });
 }
 
 
@@ -232,6 +308,83 @@ function createGround() {
 }
 
 /**
+ * Create a plane - loads from .glb model file
+ * Falls back to procedural geometry if model fails to load
+ */
+function createPlane() {
+    plane = new THREE.Group();
+    
+    // Initialize plane physics variables according to specs
+    planePosX = 0;
+    planePosZ = 0;
+    planeAltitude = 200;
+    velocityX = -20; // Initial velocity [−20, 0, 0] m/s
+    velocityY = 0;
+    velocityZ = 0;
+    angularVelocityX = 0; // Initial angular velocity [0, 0, 0] rad/s
+    angularVelocityY = 0;
+    angularVelocityZ = 0;
+    planeSpeed = 20; // Initial speed
+    thrust = 0.5; // Initial 50% throttle
+    
+    // Position the plane at 200m altitude at the origin
+    plane.position.set(0, 200, 0);
+    scene.add(plane);
+    
+    // Load the .glb model
+    const loader = new GLTFLoader();
+    
+    loader.load(
+        planeModelUrl,
+        
+        // onLoad callback
+        (gltf) => {
+            const planeModel = gltf.scene;
+            
+            // Enable shadows for the loaded model and find the propeller
+            planeModel.traverse((child) => {
+                if (child.isMesh) {
+                    child.castShadow = true;
+                    child.receiveShadow = true;
+                }
+                
+                // Try to find the propeller by name (common names: 'propeller', 'Propeller', 'prop', 'Prop')
+                if (child.name && (
+                    child.name.toLowerCase().includes('propeller') || 
+                    child.name.toLowerCase().includes('prop')
+                )) {
+                    propeller = child;
+                    console.log('Propeller found:', child.name);
+                }
+            });
+            
+            // If propeller wasn't found by name, you can manually select it
+            // Uncomment and adjust the index if needed:
+            // propeller = planeModel.children[0]; // Adjust index to match your model structure
+            
+            // Scale the model to match the original plane size (adjust as needed)
+            planeModel.scale.set(2, 2, 2);
+            
+            // Rotate the model to face forward horizontally
+            planeModel.rotation.x = -Math.PI / 2; // Rotate -90 degrees to make it horizontal
+            
+            plane.add(planeModel);
+            console.log('Plane model loaded successfully');
+        },
+        
+        // onProgress callback
+        (xhr) => {
+            console.log((xhr.loaded / xhr.total * 100) + '% loaded');
+        },
+        
+        // onError callback
+        (error) => {
+            console.error('An error occurred loading the plane model:', error);
+        }
+    );
+}
+
+/**
  * Create a terrain square at the given grid coordinates
  * @param {number} gridX - The grid X coordinate
  * @param {number} gridZ - The grid Z coordinate
@@ -279,7 +432,7 @@ function createTerrainSquare(gridX, gridZ) {
     const geometry = createTerrainGeometry(heightData);
     
     const material = new THREE.MeshLambertMaterial({ 
-        color: 0x4a7c3a,
+        color: 0x7fc96e,
         side: THREE.DoubleSide,
     });
     
@@ -317,7 +470,7 @@ function createTerrainGeometry(heightData) {
         for (let j = 0; j < size; j++) {
             const x = (j / (size - 1) - 0.5) * SQUARE_SIZE;
             const z = (i / (size - 1) - 0.5) * SQUARE_SIZE;
-            const y = heightData[i][j] * 50;
+            const y = Math.min(Math.max(heightData[i][j] * 10, 0), 200000); // Scale down and cap at 200km
             
             vertices.push(x, y, z);
             uvs.push(j / (size - 1), i / (size - 1));
@@ -396,21 +549,218 @@ function removeDistantTerrain() {
 }
 
 /**
+ * Update plane physics based on keyboard controls
+ */
+function updatePlaneControls(deltaTime) {
+    // Angular velocity changes (2 rad/s^2 acceleration)
+    const angularAccel = 2 * deltaTime;
+    
+    // W/S - Pitch down/up (effects angular velocity)
+    if (keys.w) {
+        angularVelocityX -= angularAccel; // Pitch up
+    }
+    if (keys.s) {
+        angularVelocityX += angularAccel; // Pitch down
+    }
+    
+    // A/D - Roll left/right (effects angular velocity)
+    if (keys.a) {
+        angularVelocityZ += angularAccel; // Roll left
+    }
+    if (keys.d) {
+        angularVelocityZ -= angularAccel; // Roll right
+    }
+    
+    // Q/E - Yaw left/right (effects angular velocity)
+    if (keys.q) {
+        angularVelocityY += angularAccel; // Yaw left
+    }
+    if (keys.e) {
+        angularVelocityY -= angularAccel; // Yaw right
+    }
+    
+    // Shift/Ctrl - Increase/Decrease throttle
+    if (keys.shift) {
+        thrust = Math.min(1.0, thrust + deltaTime);
+    }
+    if (keys.ctrl) {
+        thrust = Math.max(0.0, thrust - deltaTime);
+    }
+    
+    // Space - Greatly decrease throttle (by delta time times 3)
+    if (keys.space) {
+        thrust = Math.max(0.0, thrust - deltaTime * 3);
+    }
+    
+    // Angular velocity dampening (multiply by 1 - 3*deltaTime, minimum 0)
+    const dampeningFactor = Math.max(0, 1 - 3 * deltaTime);
+    angularVelocityX *= dampeningFactor;
+    angularVelocityY *= dampeningFactor;
+    angularVelocityZ *= dampeningFactor;
+    
+    // Get the direction the plane is facing
+    // The plane's forward direction needs to be calculated from its rotation
+    // In Three.js, we need to create a forward vector and apply the plane's rotation
+    const forward = new THREE.Vector3(1, 0, 0); // Forward is +X in our plane model
+    const rotation = new THREE.Euler(planeRotationX, planeRotationY, planeRotationZ, 'XYZ');
+    forward.applyEuler(rotation);
+    
+    // Initialize acceleration to the direction that plane is facing multiplied by throttle * 10
+    let accelX = forward.x * thrust * 10;
+    let accelY = forward.y * thrust * 10;
+    let accelZ = forward.z * thrust * 10;
+    
+    // The plane's y acceleration is affected by gravity and lift
+    // Subtract gravity (9.81 m/s^2)
+    accelY -= GRAVITY;
+    
+    // Add the plane's x/z speed times 0.003 for lift
+    const xzSpeed = Math.sqrt(velocityX * velocityX + velocityZ * velocityZ);
+    accelY += xzSpeed * 0.003;
+    
+    // Compute the velocity from the acceleration
+    // Acceleration is added to current velocity
+    velocityX += accelX * deltaTime;
+    velocityY += accelY * deltaTime;
+    velocityZ += accelZ * deltaTime;
+    
+    // Overall velocity is multiplied by 99% to account for air resistance
+    velocityX *= 0.99;
+    velocityY *= 0.99;
+    velocityZ *= 0.99;
+    
+    // Cap overall speed to maximum speed of 55 m/s
+    const currentSpeed = Math.sqrt(velocityX * velocityX + velocityY * velocityY + velocityZ * velocityZ);
+    if (currentSpeed > MAX_SPEED) {
+        const scale = MAX_SPEED / currentSpeed;
+        velocityX *= scale;
+        velocityY *= scale;
+        velocityZ *= scale;
+    }
+    
+    // Update position with current velocity times delta time
+    planePosX += velocityX * deltaTime;
+    planeAltitude += velocityY * deltaTime;
+    planePosZ += velocityZ * deltaTime;
+    
+    // Cap altitude at 4200 m
+    planeAltitude = Math.min(MAX_ALTITUDE, Math.max(0, planeAltitude));
+    
+    // Rotate the aircraft by its angular velocity times delta time
+    planeRotationX += angularVelocityX * deltaTime;
+    planeRotationY += angularVelocityY * deltaTime;
+    planeRotationZ += angularVelocityZ * deltaTime;
+    
+    // Update planeSpeed for display purposes
+    planeSpeed = currentSpeed;
+}
+
+/**
+ * Update the GUI display with current plane statistics
+ */
+function updateGUI() {
+    // Update speed display (convert m/s to km/h)
+    const speedElement = document.getElementById('speed');
+    if (speedElement) {
+        const speedKmh = (planeSpeed * 3.6).toFixed(1);
+        speedElement.textContent = speedKmh;
+    }
+    
+    // Update altitude display
+    const altitudeElement = document.getElementById('altitude');
+    if (altitudeElement) {
+        altitudeElement.textContent = planeAltitude.toFixed(1);
+    }
+}
+
+/**
  * Animate the scene
  */
-function animate() {
+let lastTime = 0;
+function animate(currentTime) {
     requestAnimationFrame(animate);
 
-    controls.update();
+    // Calculate delta time in seconds
+    const deltaTime = Math.min((currentTime - lastTime) / 1000, 0.1); // Cap at 0.1s to prevent huge jumps
+    lastTime = currentTime;
+
+    if (USE_ORBIT_CONTROLS) {
+        controls.update();
+    }
     updateLighting();
     
-    const time = Date.now() * 0.001;
-    const radius = 3000;
-    planePosX = Math.cos(time * 0.1) * radius;
-    planePosZ = Math.sin(time * 0.1) * radius;
+    // Update plane controls and physics
+    if (deltaTime > 0) {
+        updatePlaneControls(deltaTime);
+    }
+    
+    // Update plane position and rotation
+    if (plane) {
+        plane.position.x = planePosX;
+        plane.position.z = planePosZ;
+        plane.position.y = planeAltitude;
+        
+        // Apply rotations with 90-degree offset to make wings horizontal
+        plane.rotation.x = planeRotationX + Math.PI / 2;
+        plane.rotation.y = planeRotationY;
+        plane.rotation.z = planeRotationZ;
+        
+        // Camera follows the plane
+        if (!USE_ORBIT_CONTROLS) {
+            const cameraDistance = 40;
+            const cameraHeight = 10;
+            
+            // Calculate the backward direction from the plane's orientation
+            // The plane faces +X direction initially, account for yaw rotation
+            const backwardX = Math.sin(planeRotationY);
+            const backwardZ = -Math.cos(planeRotationY);
+            
+            // Position camera behind the plane
+            camera.position.x = plane.position.x + backwardX * cameraDistance;
+            camera.position.y = plane.position.y + cameraHeight;
+            camera.position.z = plane.position.z + backwardZ * cameraDistance;
+            
+            // Make camera look at the plane
+            camera.lookAt(plane.position);
+        }
+    }
+    
+    // Rotate propeller based on plane speed
+    if (propeller) {
+        // Propeller rotation speed is proportional to plane speed
+        // Scale the speed to make it visually appealing (speed is in m/s)
+        const propellerSpeed = planeSpeed * 0.5; // Adjust multiplier for visual effect
+        propeller.rotation.z += propellerSpeed * 0.01; // Spin around Z-axis
+    }
 
     updateTerrain();
+    updateGUI();
     render();
+}
+
+/**
+ * Reset the plane to initial position and state
+ */
+function resetPlane() {
+    planePosX = 0;
+    planePosZ = 0;
+    planeAltitude = 200;
+    planeSpeed = 20; // Initial speed magnitude
+    thrust = 0.5; // Initial 50% thrust
+    planeRotationX = 0;
+    planeRotationY = 0;
+    planeRotationZ = 0;
+    velocityX = -20; // Initial velocity [−20, 0, 0] m/s
+    velocityY = 0;
+    velocityZ = 0;
+    angularVelocityX = 0; // Initial angular velocity [0, 0, 0] rad/s
+    angularVelocityY = 0;
+    angularVelocityZ = 0;
+    
+    if (plane) {
+        plane.position.set(0, 200, 0);
+        plane.rotation.set(0, 0, 0);
+    }
 }
 
 /**
@@ -419,5 +769,12 @@ function animate() {
 window.addEventListener('DOMContentLoaded', () => {
     FlightSim();
     initializeTimeControls();
+    
+    // Set up reset button
+    const resetButton = document.getElementById('reset');
+    if (resetButton) {
+        resetButton.addEventListener('click', resetPlane);
+    }
+    
     animate();
 });
