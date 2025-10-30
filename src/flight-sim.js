@@ -29,19 +29,16 @@ let sky;
 let manualTimeOfDay = 16; // Default to noon
 let autoTimeEnabled = false;
 
-// Ground system variables
 let terrainGrid = new Map(); 
 let planePosX = 0;
 let planePosZ = 0;
 let currentGridX = 0;
 let currentGridZ = 0;
-
-// Plane variables
 let plane;
 let propeller;
-let planeSpeed = 0; // Current speed of the plane in m/s
-let planeAltitude = 200; // Current altitude of the plane in meters
-let thrust = 0.5; // Thrust as a percentage (0.0 to 1.0)
+let planeSpeed = 0; 
+let planeAltitude = 200;
+let thrust = 0.5;
 
 // Plane physics and orientation
 let planeRotationX = 0; // Pitch
@@ -96,7 +93,6 @@ function FlightSim() {
         camera.position.set(0, 200, 1500);
         camera.lookAt(0, 200, 0);
     } else {
-        // Camera will follow the plane
         camera.position.set(0, 800, 1500);
     }
 
@@ -128,7 +124,7 @@ function setupKeyboardControls() {
         if (event.ctrlKey || event.metaKey) keys.ctrl = true;
         if (key === ' ') {
             keys.space = true;
-            event.preventDefault(); // Prevent page scroll
+            event.preventDefault();
         }
     });
     
@@ -152,11 +148,8 @@ function addLighting() {
     ambientLight = new THREE.AmbientLight(0xffffff, 0.3);
     scene.add(ambientLight);
 
-    // Directional light representing the sun
     directionalLight = new THREE.DirectionalLight(0xffffff, 0.1);
-    // Position will be set dynamically in updateLighting()
     directionalLight.castShadow = true;
-    
     directionalLight.shadow.mapSize.width = 4096;
     directionalLight.shadow.mapSize.height = 4096;
     directionalLight.shadow.camera.near = 0.5;
@@ -296,7 +289,8 @@ function initializeTimeControls() {
 }
 
 /**
- * Create the initial 3x3 grid of terrain squares
+ * Create the initial grid of terrain squares for infinite terrain
+ * Starts with a 5x5 grid centered at the origin to provide good initial coverage
  */
 function createGround() {
     // Initialize a 3x3 grid of terrain squares centered at origin
@@ -431,13 +425,17 @@ function createPropeller() {
 }
 
 /**
- * Create a terrain square at the givean grid coordinates
- * @param {number} gridX - The grid X coordinate
- * @param {number} gridZ - The grid Z coordinate
+ * Create a terrain square at the given grid coordinates
+ * This is the core of the infinite terrain system - it generates seamless terrain
+ * by matching edges with neighboring chunks using the diamond-square algorithm
+ * 
+ * @param {number} gridX - The grid X coordinate (can be any integer)
+ * @param {number} gridZ - The grid Z coordinate (can be any integer)
  */
 function createTerrainSquare(gridX, gridZ) {
     const key = `${gridX},${gridZ}`;
     
+    // Skip if this terrain chunk already exists
     if (terrainGrid.has(key)) {
         return;
     }
@@ -547,6 +545,8 @@ function createTerrainGeometry(heightData) {
 
 /**
  * Update terrain based on plane position
+ * Implements infinite terrain generation by creating new chunks as the plane moves
+ * and removing distant chunks to maintain performance
  * */
 function updateTerrain() {
     const newGridX = Math.floor((planePosX + SQUARE_SIZE / 2) / SQUARE_SIZE);
@@ -556,22 +556,26 @@ function updateTerrain() {
         currentGridX = newGridX;
         currentGridZ = newGridZ;
         
-        // Ensure terrain exists within 1 grid square in all directions
-        for (let x = currentGridX - 1; x <= currentGridX + 1; x++) {
-            for (let z = currentGridZ - 1; z <= currentGridZ + 1; z++) {
+        // Create a larger grid around the player for smoother transitions (2 squares in each direction)
+        for (let x = currentGridX - 2; x <= currentGridX + 2; x++) {
+            for (let z = currentGridZ - 2; z <= currentGridZ + 2; z++) {
                 createTerrainSquare(x, z);
             }
         }
         
-        removeDistantTerrain()
+        removeDistantTerrain();
     }
 }
 
 /**
- * Remove terrain squares that are more than 3 grid squares away
+ * Remove terrain squares that are more than the specified distance away
+ * This is crucial for infinite terrain as it prevents memory leaks by
+ * disposing of meshes and geometry that are no longer visible
  */
 function removeDistantTerrain() {
-    const maxDistance = 3;
+    // Keep terrain within 4 grid squares to allow for the 2-square render distance
+    // plus a 2-square buffer before disposal
+    const maxDistance = 4;
     const toRemove = [];
     
     terrainGrid.forEach((terrain, key) => {
@@ -588,8 +592,15 @@ function removeDistantTerrain() {
     toRemove.forEach(key => {
         const terrain = terrainGrid.get(key);
         scene.remove(terrain.mesh);
-        terrain.mesh.geometry.dispose();
-        terrain.mesh.material.dispose();
+        
+        // Properly dispose of geometry and material to free memory
+        if (terrain.mesh.geometry) {
+            terrain.mesh.geometry.dispose();
+        }
+        if (terrain.mesh.material) {
+            terrain.mesh.material.dispose();
+        }
+        
         terrainGrid.delete(key);
     });
 }
@@ -727,7 +738,7 @@ function animate(currentTime) {
     requestAnimationFrame(animate);
 
     // Calculate delta time in seconds
-    const deltaTime = Math.min((currentTime - lastTime) / 1000, 0.1); // Cap at 0.1s to prevent huge jumps
+    const deltaTime = Math.min((currentTime - lastTime) / 1000, 0.1);
     lastTime = currentTime;
 
     if (USE_ORBIT_CONTROLS) {
@@ -766,19 +777,17 @@ function animate(currentTime) {
             camera.position.y = plane.position.y + cameraHeight;
             camera.position.z = plane.position.z + backwardZ * cameraDistance;
             
-            // Make camera look at the plane
             camera.lookAt(plane.position);
         }
     }
     
     // Rotate propeller based on plane speed
     if (propeller) {
-        // Propeller rotation speed is proportional to plane speed
-        // Scale the speed to make it visually appealing (speed is in m/s)
-        const propellerSpeed = planeSpeed * 2; // Adjust multiplier for visual effect
-        propeller.rotation.z -= propellerSpeed * 0.01; // Spin around Z-axis (sideways rotation)
+        const propellerSpeed = planeSpeed * 2;
+        propeller.rotation.z -= propellerSpeed * 0.01;
     }
 
+    // Update infinite terrain system
     updateTerrain();
     updateGUI();
     render();
@@ -791,15 +800,15 @@ function resetPlane() {
     planePosX = 0;
     planePosZ = 0;
     planeAltitude = 200;
-    planeSpeed = 20; // Initial speed magnitude
-    thrust = 0.5; // Initial 50% thrust
+    planeSpeed = 20;
+    thrust = 0.5;
     planeRotationX = 0;
     planeRotationY = 0;
     planeRotationZ = 0;
-    velocityX = -20; // Initial velocity [−20, 0, 0] m/s
+    velocityX = -20;
     velocityY = 0;
     velocityZ = 0;
-    angularVelocityX = 0; // Initial angular velocity [0, 0, 0] rad/s
+    angularVelocityX = 0;
     angularVelocityY = 0;
     angularVelocityZ = 0;
     
@@ -816,11 +825,9 @@ window.addEventListener('DOMContentLoaded', () => {
     FlightSim();
     initializeTimeControls();
     
-    // Set up reset button
     const resetButton = document.getElementById('reset');
     if (resetButton) {
         resetButton.addEventListener('click', resetPlane);
     }
-    
     animate();
 });
