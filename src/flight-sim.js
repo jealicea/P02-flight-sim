@@ -5,13 +5,12 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import planeModelUrl from './images/plane.glb';
 
-// const WING_SPAN = 11; // meters
 const MAX_SPEED = 55; // m/s
 const MAX_ALTITUDE = 4200; // meters
 const GRAVITY = 9.81; // m/s^2
 const SQUARE_SIZE = 2000; // meters
-const TERRAIN_DETAIL = 8; // 2^8 + 1 = 257x257 vertices
-const TERRAIN_ROUGHNESS = 0.05; // Much lower for flatter terrain
+const TERRAIN_DETAIL = 8;
+const TERRAIN_ROUGHNESS = 0.05; 
 
 const USE_ORBIT_CONTROLS = false;
 const DEBUG = true;
@@ -40,29 +39,36 @@ let planeAltitude = 200;
 let thrust = 0.5;
 
 // Plane physics and orientation
-let planeRotationX = 0; // Pitch
-let planeRotationY = 0; // Yaw
-let planeRotationZ = 0; // Roll
-let velocityX = -20; // Initial velocity [−20, 0, 0] m/s
+let planeRotationX = 0;
+let planeRotationY = 0;
+let planeRotationZ = 0;
+let velocityX = -20;
 let velocityY = 0;
 let velocityZ = 0;
-let angularVelocityX = 0; // Pitch angular velocity (rad/s)
-let angularVelocityY = 0; // Yaw angular velocity (rad/s)
-let angularVelocityZ = 0; // Roll angular velocity (rad/s)
+let angularVelocityX = 0;
+let angularVelocityY = 0;
+let angularVelocityZ = 0;
 
-// Keyboard controls state
+// Reusable objects to avoid allocations during collision checks
+let _collisionBox = new THREE.Box3();
+let _raycaster = new THREE.Raycaster();
+_raycaster.far = 20000;
+
 const keys = {
-    w: false, // Pitch up
-    s: false, // Pitch down
-    a: false, // Roll left
-    d: false, // Roll right
-    q: false, // Yaw left
-    e: false, // Yaw right
-    shift: false, // Increase throttle
-    ctrl: false, // Decrease throttle
-    space: false // Brake
+    w: false,
+    s: false,
+    a: false,
+    d: false,
+    q: false,
+    e: false,
+    shift: false,
+    ctrl: false,
+    space: false
 };
 
+/**
+ * Initialize the flight simulator
+ */
 function FlightSim() {
     scene = new THREE.Scene();
 
@@ -78,7 +84,6 @@ function FlightSim() {
     container.appendChild(renderer.domElement);
 
     if (USE_ORBIT_CONTROLS) {
-        // Set up orbit controls
         controls = new OrbitControls(camera, renderer.domElement);
         controls.target.set(0, 200, 0);
         controls.enableDamping = true;
@@ -142,7 +147,9 @@ function setupKeyboardControls() {
     });
 }
 
-
+/**
+ * Add ambient and directional lighting to the scene
+ */
 function addLighting() {
     ambientLight = new THREE.AmbientLight(0xffffff, 0.3);
     scene.add(ambientLight);
@@ -169,6 +176,9 @@ function addLighting() {
     }
 }
 
+/**
+ * Create the sky using Three.js Sky shader
+ */
 function createSky() {
     sky = new Sky();
     sky.scale.setScalar(450000);
@@ -178,11 +188,12 @@ function createSky() {
     const sunPosition = new THREE.Vector3().setFromSphericalCoords(1, phi, theta);
 
     sky.material.uniforms.sunPosition.value = sunPosition;
-
     scene.add(sky);
 }
 
-
+/**
+ * Update lighting based on time of day
+ */
 function updateLighting() {
     let normalizedTime;
     
@@ -203,9 +214,7 @@ function updateLighting() {
     }
     
     const sunAngle = (normalizedTime * 2 * Math.PI) - Math.PI;
-    
     const sunElevation = Math.sin(sunAngle) * Math.PI / 2;
-    
     const sunDistance = 5000;
     
     const phi = Math.PI / 2 - sunElevation;
@@ -218,7 +227,6 @@ function updateLighting() {
         sunPosition.z * sunDistance
     );
     
-    // Update the directional light helper
     if (DEBUG && directionalLightHelper) {
         directionalLightHelper.update();
     }
@@ -229,7 +237,6 @@ function updateLighting() {
     
     // Calculate lighting based on sun elevation
     if (sunElevation > 0) {
-        // Daytime
         const dayFactor = Math.sin(sunElevation);
         ambientLight.intensity = 0.3 + (dayFactor * 0.2);
         directionalLight.intensity = 0.1 + (dayFactor * 0.3);
@@ -240,7 +247,6 @@ function updateLighting() {
         
         scene.fog.color.setRGB(0.9, 0.95, 0.98);
     } else {
-        // Nighttime
         ambientLight.intensity = 0.25;
         directionalLight.intensity = 0.15;
         
@@ -307,18 +313,17 @@ function createGround() {
 function createPlane() {
     plane = new THREE.Group();
     
-    // Initialize plane physics variables according to specs
     planePosX = 0;
     planePosZ = 0;
     planeAltitude = 200;
-    velocityX = -20; // Initial velocity [−20, 0, 0] m/s
+    velocityX = -20;
     velocityY = 0;
     velocityZ = 0;
-    angularVelocityX = 0; // Initial angular velocity [0, 0, 0] rad/s
+    angularVelocityX = 0;
     angularVelocityY = 0;
     angularVelocityZ = 0;
-    planeSpeed = 20; // Initial speed
-    thrust = 0.5; // Initial 50% throttle
+    planeSpeed = 20;
+    thrust = 0.5;
     
     // Position the plane at 200m altitude at the origin
     plane.position.set(0, 200, 0);
@@ -329,53 +334,15 @@ function createPlane() {
     
     loader.load(
         planeModelUrl,
-        
         // onLoad callback
         (gltf) => {
             const planeModel = gltf.scene;
-            
-            // Enable shadows for the loaded model and find the propeller
-            planeModel.traverse((child) => {
-                if (child.isMesh) {
-                    child.castShadow = true;
-                    child.receiveShadow = true;
-                }
-                
-                // Try to find the propeller by name (common names: 'propeller', 'Propeller', 'prop', 'Prop')
-                if (child.name && (
-                    child.name.toLowerCase().includes('propeller') || 
-                    child.name.toLowerCase().includes('prop')
-                )) {
-                    propeller = child;
-                    console.log('Propeller found:', child.name);
-                }
-            });
-            
-            // If propeller wasn't found by name, create a custom propeller
-            if (!propeller) {
-                console.log('Creating custom propeller');
-                createPropeller();
-            }
-            
-            // Scale the model to match the original plane size (adjust as needed)
+
+            createPropeller();
             planeModel.scale.set(2, 2, 2);
-            
-            // Rotate the model to face forward horizontally
-            planeModel.rotation.x = -Math.PI / 2; // Rotate -90 degrees to make it horizontal
-            
+            planeModel.rotation.x = -Math.PI / 2;
             plane.add(planeModel);
-            console.log('Plane model loaded successfully');
         },
-        
-        // onProgress callback
-        (xhr) => {
-            console.log((xhr.loaded / xhr.total * 100) + '% loaded');
-        },
-        
-        // onError callback
-        (error) => {
-            console.error('An error occurred loading the plane model:', error);
-        }
     );
 }
 
@@ -387,11 +354,11 @@ function createPropeller() {
     propeller = new THREE.Group();
     
     // Create propeller blades
-    const bladeGeometry = new THREE.BoxGeometry(0.2, 3, 0.06); // thin, long blades (smaller)
+    const bladeGeometry = new THREE.BoxGeometry(0.2, 3, 0.06);
     const bladeMaterial = new THREE.MeshStandardMaterial({ 
         color: 0x7C7C7D,
-        // metalness: 0.7,
-        // roughness: 0.3
+        metalness: 0.7,
+        roughness: 0.3
     });
     
     // Create two blades
@@ -401,7 +368,7 @@ function createPropeller() {
     propeller.add(blade1);
     
     const blade2 = new THREE.Mesh(bladeGeometry, bladeMaterial);
-    blade2.rotation.z = Math.PI / 2; // Rotate 90 degrees for cross pattern
+    blade2.rotation.z = Math.PI / 2;
     blade2.castShadow = true;
     blade2.receiveShadow = true;
     propeller.add(blade2);
@@ -410,8 +377,8 @@ function createPropeller() {
     const hubGeometry = new THREE.CylinderGeometry(0.3, 0.3, 0.4, 16);
     const hubMaterial = new THREE.MeshStandardMaterial({ 
         color: 0x7C7C7D,
-        // metalness: 0.8,
-        // roughness: 0.2
+        metalness: 0.8,
+        roughness: 0.2
     });
     const hub = new THREE.Mesh(hubGeometry, hubMaterial);
     hub.rotation.x = Math.PI / 2;
@@ -554,16 +521,115 @@ function updateTerrain() {
     if (newGridX !== currentGridX || newGridZ !== currentGridZ) {
         currentGridX = newGridX;
         currentGridZ = newGridZ;
-        
-        // Create a larger grid around the player for smoother transitions (2 squares in each direction)
+
         for (let x = currentGridX - 2; x <= currentGridX + 2; x++) {
             for (let z = currentGridZ - 2; z <= currentGridZ + 2; z++) {
                 createTerrainSquare(x, z);
             }
         }
-        
         removeDistantTerrain();
     }
+}
+
+/**
+ * Interpolate terrain height at world coordinates (x, z) in meters.
+ * Uses the generated heightData for the terrain chunk under the point.
+ * Returns world Y (meters).
+ * NOTE: Does not allocate new vectors/arrays during the call.
+ */
+function getTerrainHeightAt(worldX, worldZ) {
+    // Determine which grid square this point falls into
+    const gridX = Math.floor((worldX + SQUARE_SIZE / 2) / SQUARE_SIZE);
+    const gridZ = Math.floor((worldZ + SQUARE_SIZE / 2) / SQUARE_SIZE);
+    const key = `${gridX},${gridZ}`;
+
+    const terrain = terrainGrid.get(key);
+    if (!terrain) return 0; // no terrain yet, assume sea level
+
+    const heightData = terrain.heightData;
+    const size = heightData.length;
+
+    // Local coordinates within the square [-SQUARE_SIZE/2, SQUARE_SIZE/2]
+    const localX = worldX - (gridX * SQUARE_SIZE);
+    const localZ = worldZ - (gridZ * SQUARE_SIZE);
+
+    // Convert to heightData indices (u,v) in [0, size-1]
+    const u = (localX / SQUARE_SIZE + 0.5) * (size - 1);
+    const v = (localZ / SQUARE_SIZE + 0.5) * (size - 1);
+
+    // Bilinear interpolation without allocations
+    const iu = Math.floor(u);
+    const iv = Math.floor(v);
+    const fu = u - iu;
+    const fv = v - iv;
+
+    const iu1 = Math.min(iu + 1, size - 1);
+    const iv1 = Math.min(iv + 1, size - 1);
+
+    const h00 = heightData[iv][iu];
+    const h10 = heightData[iv][iu1];
+    const h01 = heightData[iv1][iu];
+    const h11 = heightData[iv1][iu1];
+
+    const hx0 = h00 * (1 - fu) + h10 * fu;
+    const hx1 = h01 * (1 - fu) + h11 * fu;
+    const h = hx0 * (1 - fv) + hx1 * fv;
+
+    // In createTerrainGeometry heights were scaled by *10 and clamped; match that
+    return Math.min(Math.max(h * 10, 0), 200000);
+}
+
+/**
+ * Check for potential and accurate collisions between plane and terrain.
+ * Implements two-stage detection described in the spec. Does not allocate
+ * vectors during checks beyond the preallocated scratch objects above.
+ */
+function checkCollisions() {
+    if (!plane) return false;
+
+    _collisionBox.setFromObject(plane);
+
+    const expand = 2.0;
+    _collisionBox.min.x -= expand;
+    _collisionBox.min.z -= expand;
+    _collisionBox.max.x += expand;
+    _collisionBox.max.z += expand;
+
+    const xs = [_collisionBox.min.x, (_collisionBox.min.x + _collisionBox.max.x) * 0.5, _collisionBox.max.x];
+    const zs = [_collisionBox.min.z, (_collisionBox.min.z + _collisionBox.max.z) * 0.5, _collisionBox.max.z];
+
+    let maxTerrainY = -Infinity;
+    for (let i = 0; i < 3; i++) {
+        for (let j = 0; j < 3; j++) {
+            const ty = getTerrainHeightAt(xs[i], zs[j]);
+            if (ty > maxTerrainY) maxTerrainY = ty;
+        }
+    }
+    if (maxTerrainY <= _collisionBox.min.y) {
+        return false;
+    }
+
+    const cols = 6, rows = 6;
+    const dx = (_collisionBox.max.x - _collisionBox.min.x) / (cols - 1);
+    const dz = (_collisionBox.max.z - _collisionBox.min.z) / (rows - 1);
+
+    const planeBottomY = _collisionBox.min.y;
+
+    for (let ix = 0; ix < cols; ix++) {
+        const sampleX = _collisionBox.min.x + dx * ix;
+        for (let iz = 0; iz < rows; iz++) {
+            const sampleZ = _collisionBox.min.z + dz * iz;
+            const ty = getTerrainHeightAt(sampleX, sampleZ);
+
+            if (planeBottomY < ty) {
+                return true;
+            }
+            if ((ty - planeBottomY) <= 0.75) {
+                return true;
+            }
+        }
+    }
+    return false;
 }
 
 /**
@@ -572,8 +638,6 @@ function updateTerrain() {
  * disposing of meshes and geometry that are no longer visible
  */
 function removeDistantTerrain() {
-    // Keep terrain within 4 grid squares to allow for the 2-square render distance
-    // plus a 2-square buffer before disposal
     const maxDistance = 4;
     const toRemove = [];
     
@@ -596,10 +660,6 @@ function removeDistantTerrain() {
         if (terrain.mesh.geometry) {
             terrain.mesh.geometry.dispose();
         }
-        if (terrain.mesh.material) {
-            terrain.mesh.material.dispose();
-        }
-        
         terrainGrid.delete(key);
     });
 }
@@ -645,37 +705,28 @@ function updatePlaneControls(deltaTime) {
     angularVelocityX *= dampeningFactor;
     angularVelocityY *= dampeningFactor;
     angularVelocityZ *= dampeningFactor;
-    
 
     const forward = new THREE.Vector3(0, 0, 1);
     const rotation = new THREE.Euler(planeRotationX, planeRotationY, planeRotationZ, 'XYZ');
     forward.applyEuler(rotation);
     
-    // Initialize acceleration to the direction that plane is facing multiplied by throttle * 10
     let accelX = forward.x * thrust * 100;
     let accelY = forward.y * thrust * 100;
     let accelZ = forward.z * thrust * 100;
     
-    // The plane's y acceleration is affected by gravity and lift
-    // Subtract gravity (9.81 m/s^2)
     accelY -= GRAVITY;
     
-    // Add the plane's x/z speed times 0.003 for lift
     const xzSpeed = Math.sqrt(velocityX * velocityX + velocityZ * velocityZ);
     accelY += xzSpeed * 0.003;
-    
-    // Compute the velocity from the acceleration
-    // Acceleration is added to current velocity
+
     velocityX += accelX * deltaTime;
     velocityY += accelY * deltaTime;
     velocityZ += accelZ * deltaTime;
     
-    // Overall velocity is multiplied by 99% to account for air resistance
     velocityX *= 0.99;
     velocityY *= 0.99;
     velocityZ *= 0.99;
     
-    // Cap overall speed to maximum speed of 55 m/s
     const currentSpeed = Math.sqrt(velocityX * velocityX + velocityY * velocityY + velocityZ * velocityZ);
     if (currentSpeed > MAX_SPEED) {
         const scale = MAX_SPEED / currentSpeed;
@@ -684,20 +735,16 @@ function updatePlaneControls(deltaTime) {
         velocityZ *= scale;
     }
     
-    // Update position with current velocity times delta time
     planePosX += velocityX * deltaTime;
     planeAltitude += velocityY * deltaTime;
     planePosZ += velocityZ * deltaTime;
     
-    // Cap altitude at 4200 m
     planeAltitude = Math.min(MAX_ALTITUDE, Math.max(0, planeAltitude));
     
-    // Rotate the aircraft by its angular velocity times delta time
     planeRotationX += angularVelocityX * deltaTime;
     planeRotationY += angularVelocityY * deltaTime;
     planeRotationZ += angularVelocityZ * deltaTime;
     
-    // Update planeSpeed for display purposes
     planeSpeed = currentSpeed;
 }
 
@@ -705,14 +752,11 @@ function updatePlaneControls(deltaTime) {
  * Update the GUI display with current plane statistics
  */
 function updateGUI() {
-    // Update speed display (convert m/s to km/h)
     const speedElement = document.getElementById('speed');
     if (speedElement) {
         const speedKmh = (planeSpeed * 3.6).toFixed(1);
         speedElement.textContent = speedKmh;
     }
-
-    // Update altitude display
     const altitudeElement = document.getElementById('altitude');
     if (altitudeElement) {
         altitudeElement.textContent = planeAltitude.toFixed(1);
@@ -735,18 +779,15 @@ function animate(currentTime) {
     }
     updateLighting();
     
-    // Update plane controls and physics
     if (deltaTime > 0) {
         updatePlaneControls(deltaTime);
     }
-    
-    // Update plane position and rotation
+
     if (plane) {
         plane.position.x = planePosX;
         plane.position.z = planePosZ;
         plane.position.y = planeAltitude;
-        
-        // Apply rotations with 90-degree offset to make wings horizontal
+
         plane.rotation.x = planeRotationX + Math.PI / 2;
         plane.rotation.y = planeRotationY;
         plane.rotation.z = planeRotationZ;
@@ -755,12 +796,9 @@ function animate(currentTime) {
         if (!USE_ORBIT_CONTROLS) {
             const cameraDistance = 40;
             const cameraHeight = 10;
-            
-            // Calculate the backward direction from the plane's orientation
-            // The plane faces +X direction initially, account for yaw rotation
             const backwardX = Math.sin(planeRotationY);
             const backwardZ = -Math.cos(planeRotationY);
-            
+    
             // Position camera behind the plane
             camera.position.x = plane.position.x + backwardX * cameraDistance;
             camera.position.y = plane.position.y + cameraHeight;
@@ -769,16 +807,25 @@ function animate(currentTime) {
             camera.lookAt(plane.position);
         }
     }
-    
-    // Rotate propeller based on plane speed
     if (propeller) {
         const propellerSpeed = planeSpeed * 2;
         propeller.rotation.z -= propellerSpeed * 0.01;
     }
 
-    // Update infinite terrain system
     updateTerrain();
     updateGUI();
+
+    const collided = checkCollisions();
+    if (collided) {
+        thrust = 0;
+        velocityX = 0;
+        velocityY = 0;
+        velocityZ = 0;
+        planeSpeed = 0;
+        const groundY = getTerrainHeightAt(plane.position.x, plane.position.z);
+        plane.position.y = Math.max(plane.position.y, groundY);
+        planeAltitude = plane.position.y;
+    }
     render();
 }
 
