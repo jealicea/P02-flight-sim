@@ -609,63 +609,53 @@ function removeDistantTerrain() {
  * Update plane physics based on keyboard controls
  */
 function updatePlaneControls(deltaTime) {
-    // Angular velocity changes (2 rad/s^2 acceleration)
     const angularAccel = 2 * deltaTime;
     
-    // W/S - Pitch down/up (effects angular velocity)
     if (keys.w) {
-        angularVelocityX -= angularAccel; // Pitch up
+        angularVelocityX -= angularAccel;
     }
     if (keys.s) {
-        angularVelocityX += angularAccel; // Pitch down
+        angularVelocityX += angularAccel;
     }
     
-    // A/D - Roll left/right (effects angular velocity)
     if (keys.a) {
-        angularVelocityZ += angularAccel; // Roll left
+        angularVelocityZ += angularAccel;
     }
     if (keys.d) {
-        angularVelocityZ -= angularAccel; // Roll right
+        angularVelocityZ -= angularAccel;
     }
-    
-    // Q/E - Yaw left/right (effects angular velocity)
+
     if (keys.q) {
-        angularVelocityY += angularAccel; // Yaw left
+        angularVelocityY += angularAccel;
     }
     if (keys.e) {
-        angularVelocityY -= angularAccel; // Yaw right
+        angularVelocityY -= angularAccel;
     }
     
-    // Shift/Ctrl - Increase/Decrease throttle
     if (keys.shift) {
         thrust = Math.min(1.0, thrust + deltaTime);
     }
     if (keys.ctrl) {
         thrust = Math.max(0.0, thrust - deltaTime);
     }
-    
-    // Space - Greatly decrease throttle (by delta time times 3)
     if (keys.space) {
         thrust = Math.max(0.0, thrust - deltaTime * 3);
     }
     
-    // Angular velocity dampening (multiply by 1 - 3*deltaTime, minimum 0)
     const dampeningFactor = Math.max(0, 1 - 3 * deltaTime);
     angularVelocityX *= dampeningFactor;
     angularVelocityY *= dampeningFactor;
     angularVelocityZ *= dampeningFactor;
     
-    // Get the direction the plane is facing
-    // The plane's forward direction needs to be calculated from its rotation
-    // In Three.js, we need to create a forward vector and apply the plane's rotation
-    const forward = new THREE.Vector3(1, 0, 0); // Forward is +X in our plane model
+
+    const forward = new THREE.Vector3(0, 0, 1);
     const rotation = new THREE.Euler(planeRotationX, planeRotationY, planeRotationZ, 'XYZ');
     forward.applyEuler(rotation);
     
     // Initialize acceleration to the direction that plane is facing multiplied by throttle * 10
-    let accelX = forward.x * thrust * 10;
-    let accelY = forward.y * thrust * 10;
-    let accelZ = forward.z * thrust * 10;
+    let accelX = forward.x * thrust * 100;
+    let accelY = forward.y * thrust * 100;
+    let accelZ = forward.z * thrust * 100;
     
     // The plane's y acceleration is affected by gravity and lift
     // Subtract gravity (9.81 m/s^2)
