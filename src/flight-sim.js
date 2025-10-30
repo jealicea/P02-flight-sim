@@ -25,9 +25,8 @@ let directionalLight;
 let directionalLightHelper;
 let sky;
 
-// Time of day controls
-let manualTimeOfDay = 16; // Default to noon
-let autoTimeEnabled = false;
+let manualTimeOfDay = 16;
+let autoTimeEnabled = true;
 
 let terrainGrid = new Map(); 
 let planePosX = 0;
@@ -619,17 +618,17 @@ function updatePlaneControls(deltaTime) {
     }
     
     if (keys.a) {
-        angularVelocityZ += angularAccel;
+        angularVelocityZ -= angularAccel;
     }
     if (keys.d) {
-        angularVelocityZ -= angularAccel;
+        angularVelocityZ += angularAccel;
     }
 
     if (keys.q) {
-        angularVelocityY += angularAccel;
+        angularVelocityY -= angularAccel;
     }
     if (keys.e) {
-        angularVelocityY -= angularAccel;
+        angularVelocityY += angularAccel;
     }
     
     if (keys.shift) {
