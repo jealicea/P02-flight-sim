@@ -9,9 +9,8 @@ const MAX_SPEED = 55; // m/s
 const MAX_ALTITUDE = 4200; // meters
 const GRAVITY = 9.81; // m/s^2
 const SQUARE_SIZE = 2000; // meters
-const TERRAIN_DETAIL = 8;
-const TERRAIN_ROUGHNESS = 0.05; 
-
+const TERRAIN_DETAIL = 9;
+const TERRAIN_ROUGHNESS = 0.05;
 const USE_ORBIT_CONTROLS = false;
 const DEBUG = true;
 
@@ -74,7 +73,7 @@ function FlightSim() {
 
     camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 100000);
     renderer = new THREE.WebGLRenderer({ antialias: true });
-    scene.fog = new THREE.Fog(0xE6F3FF, 8000, 20000);
+    scene.fog = new THREE.Fog(0xE6F3FF, 2000, 12000);
     renderer.setSize(window.innerWidth, window.innerHeight);
 
     renderer.shadowMap.enabled = true;
@@ -151,10 +150,10 @@ function setupKeyboardControls() {
  * Add ambient and directional lighting to the scene
  */
 function addLighting() {
-    ambientLight = new THREE.AmbientLight(0xffffff, 0.3);
+    ambientLight = new THREE.AmbientLight(0xffffff, 0.2);
     scene.add(ambientLight);
 
-    directionalLight = new THREE.DirectionalLight(0xffffff, 0.1);
+    directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
     directionalLight.castShadow = true;
     directionalLight.shadow.mapSize.width = 4096;
     directionalLight.shadow.mapSize.height = 4096;
@@ -245,7 +244,7 @@ function updateLighting() {
         ambientLight.color.setRGB(brightness * 0.9, brightness * 0.9, brightness * 0.95);
         directionalLight.color.setRGB(brightness, brightness, brightness);
         
-        scene.fog.color.setRGB(0.9, 0.95, 0.98);
+        scene.fog.color.setRGB(0.85, 0.9, 0.95);
     } else {
         ambientLight.intensity = 0.25;
         directionalLight.intensity = 0.15;
@@ -253,7 +252,7 @@ function updateLighting() {
         ambientLight.color.setRGB(0.4, 0.4, 0.6);
         directionalLight.color.setRGB(0.3, 0.3, 0.5);
         
-        scene.fog.color.setRGB(0.15, 0.15, 0.25);
+        scene.fog.color.setRGB(0.1, 0.1, 0.2);
     }
 }
 
@@ -338,6 +337,21 @@ function createPlane() {
         (gltf) => {
             const planeModel = gltf.scene;
 
+            planeModel.traverse((obj) => {
+                if (obj.isMesh) {
+                    obj.castShadow = true;
+                    obj.receiveShadow = true;
+                    if (obj.material && obj.material.isMeshBasicMaterial) {
+                        obj.material = new THREE.MeshStandardMaterial({
+                            map: obj.material.map || null,
+                            color: obj.material.color ? obj.material.color : new THREE.Color(0xffffff),
+                            metalness: 0.1,
+                            roughness: 0.8
+                        });
+                    }
+                }
+            });
+
             createPropeller();
             planeModel.scale.set(2, 2, 2);
             planeModel.rotation.x = -Math.PI / 2;
@@ -354,10 +368,10 @@ function createPropeller() {
     propeller = new THREE.Group();
     
     // Create propeller blades
-    const bladeGeometry = new THREE.BoxGeometry(0.2, 3, 0.06);
+    const bladeGeometry = new THREE.BoxGeometry(0.3, 4, 0.06);
     const bladeMaterial = new THREE.MeshStandardMaterial({ 
-        color: 0x7C7C7D,
-        metalness: 0.7,
+        color: 0xffffff,
+        metalness: 0.2,
         roughness: 0.3
     });
     
@@ -376,7 +390,7 @@ function createPropeller() {
     // Create propeller hub (center)
     const hubGeometry = new THREE.CylinderGeometry(0.3, 0.3, 0.4, 16);
     const hubMaterial = new THREE.MeshStandardMaterial({ 
-        color: 0x7C7C7D,
+        color: 0xffffff,
         metalness: 0.8,
         roughness: 0.2
     });
@@ -495,7 +509,6 @@ function createTerrainGeometry(heightData) {
             const c = (i + 1) * size + j;
             const d = (i + 1) * size + j + 1;
             
-            // Create two triangles per quad
             indices.push(a, b, c);
             indices.push(b, d, c);
         }
