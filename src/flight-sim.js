@@ -271,7 +271,6 @@ function createPlane() {
     planeSpeed = 20;
     thrust = 0.5;
     
-    // Position the plane at 200m altitude at the origin
     plane.position.set(0, 200, 0);
     scene.add(plane);
     
@@ -322,7 +321,6 @@ function createPropeller() {
         roughness: 0.3
     });
     
-    // Create two blades
     const blade1 = new THREE.Mesh(bladeGeometry, bladeMaterial);
     blade1.castShadow = true;
     blade1.receiveShadow = true;
@@ -333,8 +331,8 @@ function createPropeller() {
     blade2.castShadow = true;
     blade2.receiveShadow = true;
     propeller.add(blade2);
-    
-    // Create propeller hub (center)
+
+    // Create propeller center
     const hubGeometry = new THREE.CylinderGeometry(0.3, 0.3, 0.4, 16);
     const hubMaterial = new THREE.MeshStandardMaterial({ 
         color: 0xffffff,
