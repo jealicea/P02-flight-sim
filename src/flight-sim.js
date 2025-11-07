@@ -108,39 +108,48 @@ function render() {
 }
 
 /**
+ * Handle keydown events
+ */
+function handleKeyDown(event) {
+    const key = event.key.toLowerCase();
+    
+    if (key === 'w') keys.w = true;
+    if (key === 's') keys.s = true;
+    if (key === 'a') keys.a = true;
+    if (key === 'd') keys.d = true;
+    if (key === 'q') keys.q = true;
+    if (key === 'e') keys.e = true;
+    if (event.shiftKey) keys.shift = true;
+    if (event.ctrlKey || event.metaKey) keys.ctrl = true;
+    if (key === ' ') {
+        keys.space = true;
+        event.preventDefault();
+    }
+}
+
+/**
+ * Handle keyup events
+ */
+function handleKeyUp(event) {
+    const key = event.key.toLowerCase();
+    
+    if (key === 'w') keys.w = false;
+    if (key === 's') keys.s = false;
+    if (key === 'a') keys.a = false;
+    if (key === 'd') keys.d = false;
+    if (key === 'q') keys.q = false;
+    if (key === 'e') keys.e = false;
+    if (!event.shiftKey) keys.shift = false;
+    if (!event.ctrlKey && !event.metaKey) keys.ctrl = false;
+    if (key === ' ') keys.space = false;
+}
+
+/**
  * Set up keyboard event listeners for plane controls
  */
 function setupKeyboardControls() {
-    window.addEventListener('keydown', (event) => {
-        const key = event.key.toLowerCase();
-        
-        if (key === 'w') keys.w = true;
-        if (key === 's') keys.s = true;
-        if (key === 'a') keys.a = true;
-        if (key === 'd') keys.d = true;
-        if (key === 'q') keys.q = true;
-        if (key === 'e') keys.e = true;
-        if (event.shiftKey) keys.shift = true;
-        if (event.ctrlKey || event.metaKey) keys.ctrl = true;
-        if (key === ' ') {
-            keys.space = true;
-            event.preventDefault();
-        }
-    });
-    
-    window.addEventListener('keyup', (event) => {
-        const key = event.key.toLowerCase();
-        
-        if (key === 'w') keys.w = false;
-        if (key === 's') keys.s = false;
-        if (key === 'a') keys.a = false;
-        if (key === 'd') keys.d = false;
-        if (key === 'q') keys.q = false;
-        if (key === 'e') keys.e = false;
-        if (!event.shiftKey) keys.shift = false;
-        if (!event.ctrlKey && !event.metaKey) keys.ctrl = false;
-        if (key === ' ') keys.space = false;
-    });
+    window.addEventListener('keydown', handleKeyDown);
+    window.addEventListener('keyup', handleKeyUp);
 }
 
 /**
@@ -187,20 +196,27 @@ function createSky() {
 }
 
 /**
- * Update lighting based on automatic time cycling
+ * Calculate sun position based on time cycle
  */
-function updateLighting() {
-
+function calculateSunPosition() {
     const cycleTime = (Date.now() * 0.001) % 60;
     const normalizedTime = cycleTime / 60;
     
     const sunAngle = (normalizedTime * 2 * Math.PI) - Math.PI;
     const sunElevation = Math.sin(sunAngle) * Math.PI / 2;
-    const sunDistance = 5000;
     
     const phi = Math.PI / 2 - sunElevation;
     const theta = sunAngle + Math.PI;
     const sunPosition = new THREE.Vector3().setFromSphericalCoords(1, phi, theta);
+    
+    return { sunPosition, sunElevation };
+}
+
+/**
+ * Update directional light position and sky
+ */
+function updateSunPosition(sunPosition) {
+    const sunDistance = 5000;
     
     directionalLight.position.set(
         sunPosition.x * sunDistance,
@@ -215,8 +231,12 @@ function updateLighting() {
     if (sky) {
         sky.material.uniforms.sunPosition.value = sunPosition;
     }
-    
+}
 
+/**
+ * Update lighting intensities and colors based on time of day
+ */
+function updateLightingColors(sunElevation) {
     if (sunElevation > 0) {
         const dayFactor = Math.sin(sunElevation);
         ambientLight.intensity = 0.3 + (dayFactor * 0.2);
@@ -239,6 +259,15 @@ function updateLighting() {
 }
 
 /**
+ * Update lighting based on automatic time cycling
+ */
+function updateLighting() {
+    const { sunPosition, sunElevation } = calculateSunPosition();
+    updateSunPosition(sunPosition);
+    updateLightingColors(sunElevation);
+}
+
+/**
  * Create the initial grid of terrain squares for infinite terrain
  * Starts with a 5x5 grid centered at the origin to provide good initial coverage
  */
@@ -252,12 +281,9 @@ function createGround() {
 }
 
 /**
- * Create a plane - loads from .glb model file
- * Falls back to procedural geometry if model fails to load
+ * Initialize plane physics state
  */
-function createPlane() {
-    plane = new THREE.Group();
-    
+function initializePlaneState() {
     planePosX = 0;
     planePosZ = 0;
     planeAltitude = 200;
@@ -269,11 +295,40 @@ function createPlane() {
     angularVelocityZ = 0;
     planeSpeed = 20;
     thrust = 0.5;
+}
+
+/**
+ * Configure model materials for proper lighting and shadows
+ */
+function configurePlaneModel(planeModel) {
+    planeModel.traverse((obj) => {
+        if (obj.isMesh) {
+            obj.castShadow = true;
+            obj.receiveShadow = true;
+            if (obj.material && obj.material.isMeshBasicMaterial) {
+                obj.material = new THREE.MeshStandardMaterial({
+                    map: obj.material.map || null,
+                    color: obj.material.color ? obj.material.color : new THREE.Color(0xffffff),
+                    metalness: 0.1,
+                    roughness: 0.8
+                });
+            }
+        }
+    });
+}
+
+/**
+ * Create a plane - loads from .glb model file
+ * Falls back to procedural geometry if model fails to load
+ */
+function createPlane() {
+    plane = new THREE.Group();
+    
+    initializePlaneState();
     
     plane.position.set(0, 200, 0);
     scene.add(plane);
    
-    
     const loader = new GLTFLoader();
     
     loader.load(
@@ -281,22 +336,9 @@ function createPlane() {
         (gltf) => {
             const planeModel = gltf.scene;
 
-            planeModel.traverse((obj) => {
-                if (obj.isMesh) {
-                    obj.castShadow = true;
-                    obj.receiveShadow = true;
-                    if (obj.material && obj.material.isMeshBasicMaterial) {
-                        obj.material = new THREE.MeshStandardMaterial({
-                            map: obj.material.map || null,
-                            color: obj.material.color ? obj.material.color : new THREE.Color(0xffffff),
-                            metalness: 0.1,
-                            roughness: 0.8
-                        });
-                    }
-                }
-            });
-
+            configurePlaneModel(planeModel);
             createPropeller();
+            
             planeModel.scale.set(2, 2, 2);
             planeModel.rotation.x = -Math.PI / 2;
             plane.add(planeModel);
@@ -311,7 +353,6 @@ function createPropeller() {
     
     propeller = new THREE.Group();
     
-
     const bladeGeometry = new THREE.BoxGeometry(0.3, 4, 0.06);
     const bladeMaterial = new THREE.MeshStandardMaterial({ 
         color: 0xffffff,
@@ -330,7 +371,6 @@ function createPropeller() {
     blade2.receiveShadow = true;
     propeller.add(blade2);
 
-    
     const hubGeometry = new THREE.CylinderGeometry(0.3, 0.3, 0.4, 16);
     const hubMaterial = new THREE.MeshStandardMaterial({ 
         color: 0xffffff,
