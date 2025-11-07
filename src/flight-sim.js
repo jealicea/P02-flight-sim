@@ -34,7 +34,7 @@ let planeSpeed = 0;
 let planeAltitude = 200;
 let thrust = 0.5;
 
-// Plane physics and orientation
+
 let planeRotationX = 0;
 let planeRotationY = 0;
 let planeRotationZ = 0;
@@ -45,7 +45,7 @@ let angularVelocityX = 0;
 let angularVelocityY = 0;
 let angularVelocityZ = 0;
 
-// Reusable objects to avoid allocations during collision checks
+
 let _collisionBox = new THREE.Box3();
 let _raycaster = new THREE.Raycaster();
 _raycaster.far = 20000;
@@ -165,7 +165,6 @@ function addLighting() {
     scene.add(directionalLight);
     scene.add(directionalLight.target);
 
-    // Add directional light helper to visualize the sun's position and direction
     if (DEBUG) {
         directionalLightHelper = new THREE.DirectionalLightHelper(directionalLight, 1000, 0xffff00);
         scene.add(directionalLightHelper);
@@ -191,7 +190,7 @@ function createSky() {
  * Update lighting based on automatic time cycling
  */
 function updateLighting() {
-    // Auto cycle through time of day
+
     const cycleTime = (Date.now() * 0.001) % 60;
     const normalizedTime = cycleTime / 60;
     
@@ -217,7 +216,7 @@ function updateLighting() {
         sky.material.uniforms.sunPosition.value = sunPosition;
     }
     
-    // Calculate lighting based on sun elevation
+
     if (sunElevation > 0) {
         const dayFactor = Math.sin(sunElevation);
         ambientLight.intensity = 0.3 + (dayFactor * 0.2);
@@ -244,7 +243,7 @@ function updateLighting() {
  * Starts with a 5x5 grid centered at the origin to provide good initial coverage
  */
 function createGround() {
-    // Initialize a 3x3 grid of terrain squares centered at origin
+    
     for (let x = -1; x <= 1; x++) {
         for (let z = -1; z <= 1; z++) {
             createTerrainSquare(x, z);
@@ -273,13 +272,12 @@ function createPlane() {
     
     plane.position.set(0, 200, 0);
     scene.add(plane);
+   
     
-    // Load the .glb model
     const loader = new GLTFLoader();
     
     loader.load(
-        planeModelUrl,
-        // onLoad callback
+        planeModelUrl, 
         (gltf) => {
             const planeModel = gltf.scene;
 
@@ -310,10 +308,10 @@ function createPlane() {
  * Create a propeller on the nose of the plane
  */
 function createPropeller() {
-    // Create a group for the propeller
+    
     propeller = new THREE.Group();
     
-    // Create propeller blades
+
     const bladeGeometry = new THREE.BoxGeometry(0.3, 4, 0.06);
     const bladeMaterial = new THREE.MeshStandardMaterial({ 
         color: 0xffffff,
@@ -332,7 +330,7 @@ function createPropeller() {
     blade2.receiveShadow = true;
     propeller.add(blade2);
 
-    // Create propeller center
+    
     const hubGeometry = new THREE.CylinderGeometry(0.3, 0.3, 0.4, 16);
     const hubMaterial = new THREE.MeshStandardMaterial({ 
         color: 0xffffff,
@@ -360,12 +358,12 @@ function createPropeller() {
 function createTerrainSquare(gridX, gridZ) {
     const key = `${gridX},${gridZ}`;
     
-    // Skip if this terrain chunk already exists
+    
     if (terrainGrid.has(key)) {
         return;
     }
 
-    // Get edge constraints from neighboring squares
+
     const topEdge = `${gridX},${gridZ - 1}`; 
     const bottomEdge = `${gridX},${gridZ + 1}`;
     const leftEdge = `${gridX - 1},${gridZ}`;
@@ -395,7 +393,7 @@ function createTerrainSquare(gridX, gridZ) {
         constraints.right = extractLeft(rightNeighbor.heightData);
     }
 
-    // Generate terrain height data using diamond-square algorithm
+
     const heightData = generateTerrain(TERRAIN_DETAIL, TERRAIN_ROUGHNESS, constraints);
     
     const geometry = createTerrainGeometry(heightData);
@@ -438,21 +436,20 @@ function createTerrainGeometry(heightData) {
     const uvs = [];
     const colors = [];
     
-    // Base green color components (matching 0x7fc96e)
+   
     const baseColor = new THREE.Color(0x7fc96e);
     
-    // Generate vertices, UVs, and colors from height data
+
     for (let i = 0; i < size; i++) {
         for (let j = 0; j < size; j++) {
             const x = (j / (size - 1) - 0.5) * SQUARE_SIZE;
             const z = (i / (size - 1) - 0.5) * SQUARE_SIZE;
             const height = heightData[i][j];
-            const y = Math.min(Math.max(height * 10, 0), 200000); // Scale down and cap at 200km
-            
+            const y = Math.min(Math.max(height * 10, 0), 200000); 
             vertices.push(x, y, z);
             uvs.push(j / (size - 1), i / (size - 1));
             
-            // Calculate slope for this vertex by looking at neighbors
+
             let slope = 0;
             if (i > 0 && i < size - 1 && j > 0 && j < size - 1) {
                 const dx = heightData[i][j + 1] - heightData[i][j - 1];
@@ -460,19 +457,17 @@ function createTerrainGeometry(heightData) {
                 slope = Math.sqrt(dx * dx + dz * dz);
             }
             
-            // Create color variations based on height and slope
+
             let colorVariation = baseColor.clone();
             
-            // Height-based variation (darker for lower areas, lighter for higher)
-            const heightFactor = Math.max(0, Math.min(1, (height + 5) / 15)); // Normalize height
-            
-            // Slope-based variation (different shades for steep vs flat areas)
+            const heightFactor = Math.max(0, Math.min(1, (height + 5) / 15)); 
+           
             const slopeFactor = Math.min(1, slope * 2);
             
-            // Add subtle random variation for texture detail
+
             const randomFactor = (Math.random() - 0.5) * 0.1;
             
-            // Apply variations while keeping the green color scheme
+            
             colorVariation.r = Math.max(0.3, Math.min(1, baseColor.r + (heightFactor - 0.5) * 0.2 + slopeFactor * 0.15 + randomFactor));
             colorVariation.g = Math.max(0.5, Math.min(1, baseColor.g + (heightFactor - 0.5) * 0.15 + slopeFactor * 0.1 + randomFactor));
             colorVariation.b = Math.max(0.2, Math.min(1, baseColor.b + (heightFactor - 0.5) * 0.25 + slopeFactor * 0.2 + randomFactor));
@@ -481,7 +476,7 @@ function createTerrainGeometry(heightData) {
         }
     }
     
-    // Generate indices for triangles
+    
     for (let i = 0; i < size - 1; i++) {
         for (let j = 0; j < size - 1; j++) {
             const a = i * size + j;
@@ -532,26 +527,26 @@ function updateTerrain() {
  * NOTE: Does not allocate new vectors/arrays during the call.
  */
 function getTerrainHeightAt(worldX, worldZ) {
-    // Determine which grid square this point falls into
+
     const gridX = Math.floor((worldX + SQUARE_SIZE / 2) / SQUARE_SIZE);
     const gridZ = Math.floor((worldZ + SQUARE_SIZE / 2) / SQUARE_SIZE);
     const key = `${gridX},${gridZ}`;
 
     const terrain = terrainGrid.get(key);
-    if (!terrain) return 0; // no terrain yet, assume sea level
+    if (!terrain) return 0; 
 
     const heightData = terrain.heightData;
     const size = heightData.length;
 
-    // Local coordinates within the square [-SQUARE_SIZE/2, SQUARE_SIZE/2]
+    
     const localX = worldX - (gridX * SQUARE_SIZE);
     const localZ = worldZ - (gridZ * SQUARE_SIZE);
 
-    // Convert to heightData indices (u,v) in [0, size-1]
+    
     const u = (localX / SQUARE_SIZE + 0.5) * (size - 1);
     const v = (localZ / SQUARE_SIZE + 0.5) * (size - 1);
 
-    // Bilinear interpolation without allocations
+
     const iu = Math.floor(u);
     const iv = Math.floor(v);
     const fu = u - iu;
@@ -569,7 +564,7 @@ function getTerrainHeightAt(worldX, worldZ) {
     const hx1 = h01 * (1 - fu) + h11 * fu;
     const h = hx0 * (1 - fv) + hx1 * fv;
 
-    // In createTerrainGeometry heights were scaled by *10 and clamped; match that
+
     return Math.min(Math.max(h * 10, 0), 200000);
 }
 
@@ -650,7 +645,6 @@ function removeDistantTerrain() {
         const terrain = terrainGrid.get(key);
         scene.remove(terrain.mesh);
         
-        // Properly dispose of geometry and material to free memory
         if (terrain.mesh.geometry) {
             terrain.mesh.geometry.dispose();
         }
@@ -764,7 +758,7 @@ let lastTime = 0;
 function animate(currentTime) {
     requestAnimationFrame(animate);
 
-    // Calculate delta time in seconds
+   
     const deltaTime = Math.min((currentTime - lastTime) / 1000, 0.1);
     lastTime = currentTime;
 
@@ -786,14 +780,14 @@ function animate(currentTime) {
         plane.rotation.y = planeRotationY;
         plane.rotation.z = planeRotationZ;
         
-        // Camera follows the plane
+
         if (!USE_ORBIT_CONTROLS) {
             const cameraDistance = 40;
             const cameraHeight = 10;
             const backwardX = Math.sin(planeRotationY);
             const backwardZ = -Math.cos(planeRotationY);
     
-            // Position camera behind the plane
+
             camera.position.x = plane.position.x + backwardX * cameraDistance;
             camera.position.y = plane.position.y + cameraHeight;
             camera.position.z = plane.position.z + backwardZ * cameraDistance;
