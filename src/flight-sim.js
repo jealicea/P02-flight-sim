@@ -8,7 +8,7 @@ import planeModelUrl from './images/plane.glb';
 const MAX_SPEED = 55; // m/s
 const MAX_ALTITUDE = 4200; // meters
 const GRAVITY = 9.81; // m/s^2
-const SQUARE_SIZE = 2000; // meters
+const SQUARE_SIZE = 2000; // meters~
 const TERRAIN_DETAIL = 9;
 const TERRAIN_ROUGHNESS = 0.05;
 const USE_ORBIT_CONTROLS = false;
@@ -455,9 +455,12 @@ function createTerrainSquare(gridX, gridZ) {
     
     const geometry = createTerrainGeometry(heightData);
     
-    const material = new THREE.MeshLambertMaterial({ 
+    const material = new THREE.MeshStandardMaterial({ 
         color: 0x7fc96e,
         side: THREE.DoubleSide,
+        roughness: 0.8,
+        metalness: 0.0,
+        vertexColors: true,
     });
     
     const mesh = new THREE.Mesh(geometry, material);
@@ -488,16 +491,48 @@ function createTerrainGeometry(heightData) {
     const vertices = [];
     const indices = [];
     const uvs = [];
+    const colors = [];
     
-    // Generate vertices and UVs from height data
+    // Base green color components (matching 0x7fc96e)
+    const baseColor = new THREE.Color(0x7fc96e);
+    
+    // Generate vertices, UVs, and colors from height data
     for (let i = 0; i < size; i++) {
         for (let j = 0; j < size; j++) {
             const x = (j / (size - 1) - 0.5) * SQUARE_SIZE;
             const z = (i / (size - 1) - 0.5) * SQUARE_SIZE;
-            const y = Math.min(Math.max(heightData[i][j] * 10, 0), 200000); // Scale down and cap at 200km
+            const height = heightData[i][j];
+            const y = Math.min(Math.max(height * 10, 0), 200000); // Scale down and cap at 200km
             
             vertices.push(x, y, z);
             uvs.push(j / (size - 1), i / (size - 1));
+            
+            // Calculate slope for this vertex by looking at neighbors
+            let slope = 0;
+            if (i > 0 && i < size - 1 && j > 0 && j < size - 1) {
+                const dx = heightData[i][j + 1] - heightData[i][j - 1];
+                const dz = heightData[i + 1][j] - heightData[i - 1][j];
+                slope = Math.sqrt(dx * dx + dz * dz);
+            }
+            
+            // Create color variations based on height and slope
+            let colorVariation = baseColor.clone();
+            
+            // Height-based variation (darker for lower areas, lighter for higher)
+            const heightFactor = Math.max(0, Math.min(1, (height + 5) / 15)); // Normalize height
+            
+            // Slope-based variation (different shades for steep vs flat areas)
+            const slopeFactor = Math.min(1, slope * 2);
+            
+            // Add subtle random variation for texture detail
+            const randomFactor = (Math.random() - 0.5) * 0.1;
+            
+            // Apply variations while keeping the green color scheme
+            colorVariation.r = Math.max(0.3, Math.min(1, baseColor.r + (heightFactor - 0.5) * 0.2 + slopeFactor * 0.15 + randomFactor));
+            colorVariation.g = Math.max(0.5, Math.min(1, baseColor.g + (heightFactor - 0.5) * 0.15 + slopeFactor * 0.1 + randomFactor));
+            colorVariation.b = Math.max(0.2, Math.min(1, baseColor.b + (heightFactor - 0.5) * 0.25 + slopeFactor * 0.2 + randomFactor));
+            
+            colors.push(colorVariation.r, colorVariation.g, colorVariation.b);
         }
     }
     
@@ -517,6 +552,7 @@ function createTerrainGeometry(heightData) {
     geometry.setIndex(indices);
     geometry.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
     geometry.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
+    geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
     geometry.computeVertexNormals();
     
     return geometry;

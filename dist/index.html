@@ -1,4 +1,12 @@
-<!doctype html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><link rel="icon" type="image/png" href="images/favicon.png"><title>Flight Simulator</title><style>body {
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="icon" type="image/png" href="images/favicon.png">
+    <title>Flight Simulator</title>
+    <style>
+        body {
             margin: 0;
             padding: 0;
             overflow: hidden;
@@ -53,4 +61,96 @@
             width: 100%;
         }
         #reset:hover { background: #45a049; }
-        #reset:active { background: #3e8e41; }</style><script defer="defer" src="flight-sim.js"></script></head><body><div id="container"><div id="info"><h1>Flight Simulator</h1><div>Speed: <span id="speed">0</span> km/h</div><div>Altitude: <span id="altitude">0</span> m</div></div><div id="controls"><strong>Controls:</strong><br>W/S - Pitch<br>A/D - Roll<br>Q/E - Yaw<br>Shift/Ctrl - Throttle<br>Space - Brake<br><button id="reset">Reset</button></div></div><script type="module" src="./flight-sim.js"></script></body></html>
+        #reset:active { background: #3e8e41; }
+        
+        #time-controls {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            color: white;
+            background: rgba(0, 0, 0, 0.7);
+            padding: 15px;
+            border-radius: 5px;
+            font-size: 14px;
+            z-index: 100;
+            min-width: 200px;
+        }
+        
+        #time-slider {
+            width: 100%;
+            margin: 10px 0;
+            -webkit-appearance: none;
+            appearance: none;
+            height: 5px;
+            border-radius: 5px;
+            background: #d3d3d3;
+            outline: none;
+            opacity: 0.7;
+            transition: opacity 0.2s;
+        }
+        
+        #time-slider:hover {
+            opacity: 1;
+        }
+        
+        #time-slider::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            background: #04AA6D;
+            cursor: pointer;
+        }
+        
+        #time-slider::-moz-range-thumb {
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            background: #04AA6D;
+            cursor: pointer;
+            border: none;
+        }
+        
+        #auto-time-checkbox {
+            margin-right: 8px;
+        }
+        
+        .time-label {
+            font-weight: bold;
+            margin-bottom: 5px;
+        }
+    </style>
+<script defer src="flight-sim.js"></script></head>
+<body>
+    <div id="container">
+        <div id="info">
+            <h1>Flight Simulator</h1>
+            <div>Speed: <span id="speed">0</span> km/h</div>
+            <div>Altitude: <span id="altitude">0</span> m</div>
+        </div>
+        
+        <div id="time-controls">
+            <div class="time-label">Time of Day</div>
+            <div>
+                <input type="checkbox" id="auto-time-checkbox" checked>
+                <label for="auto-time-checkbox">Auto Cycle</label>
+            </div>
+            <input type="range" id="time-slider" min="0" max="24" step="0.1" value="12">
+            <div id="time-display">12:00</div>
+        </div>
+        
+        <div id="controls">
+            <strong>Controls:</strong><br>
+            W/S - Pitch<br>
+            A/D - Roll<br>
+            Q/E - Yaw<br>
+            Shift/Ctrl - Throttle<br>
+            Space - Brake<br>
+            <button id="reset">Reset</button>
+        </div>
+    </div>
+    <script type="module" src="./flight-sim.js"></script>
+</html>
+
+
