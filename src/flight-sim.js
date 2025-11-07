@@ -12,7 +12,7 @@ const SQUARE_SIZE = 2000; // meters~
 const TERRAIN_DETAIL = 9;
 const TERRAIN_ROUGHNESS = 0.05;
 const USE_ORBIT_CONTROLS = false;
-const DEBUG = true;
+const DEBUG = false;
 
 let scene;
 let camera;
@@ -22,9 +22,6 @@ let ambientLight;
 let directionalLight;
 let directionalLightHelper;
 let sky;
-
-let manualTimeOfDay = 16;
-let autoTimeEnabled = true;
 
 let terrainGrid = new Map(); 
 let planePosX = 0;
@@ -191,26 +188,12 @@ function createSky() {
 }
 
 /**
- * Update lighting based on time of day
+ * Update lighting based on automatic time cycling
  */
 function updateLighting() {
-    let normalizedTime;
-    
-    if (autoTimeEnabled) {
-        // Auto cycle - original behavior
-        const cycleTime = (Date.now() * 0.001) % 60;
-        normalizedTime = cycleTime / 60;
-        
-        // Update the slider to reflect auto time
-        const timeSlider = document.getElementById('time-slider');
-        if (timeSlider) {
-            manualTimeOfDay = normalizedTime * 24;
-            timeSlider.value = manualTimeOfDay;
-            updateTimeDisplay();
-        }
-    } else {
-        normalizedTime = manualTimeOfDay / 24;
-    }
+    // Auto cycle through time of day
+    const cycleTime = (Date.now() * 0.001) % 60;
+    const normalizedTime = cycleTime / 60;
     
     const sunAngle = (normalizedTime * 2 * Math.PI) - Math.PI;
     const sunElevation = Math.sin(sunAngle) * Math.PI / 2;
@@ -253,42 +236,6 @@ function updateLighting() {
         directionalLight.color.setRGB(0.3, 0.3, 0.5);
         
         scene.fog.color.setRGB(0.1, 0.1, 0.2);
-    }
-}
-
-/**
- * Update the displayed time based on manualTimeOfDay
- */
-function updateTimeDisplay() {
-    const hours = Math.floor(manualTimeOfDay);
-    const minutes = Math.floor((manualTimeOfDay - hours) * 60);
-    const timeString = `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}`;
-    
-    const timeDisplay = document.getElementById('time-display');
-    if (timeDisplay) {
-        timeDisplay.textContent = timeString;
-    }
-}
-
-/**
- * Initialize time controls (slider and checkbox)
- */
-function initializeTimeControls() {
-    const timeSlider = document.getElementById('time-slider');
-    const autoTimeCheckbox = document.getElementById('auto-time-checkbox');
-    
-    if (timeSlider) {
-        timeSlider.addEventListener('input', (event) => {
-            manualTimeOfDay = parseFloat(event.target.value);
-            updateTimeDisplay();
-        });
-        updateTimeDisplay();
-    }
-    
-    if (autoTimeCheckbox) {
-        autoTimeCheckbox.addEventListener('change', (event) => {
-            autoTimeEnabled = event.target.checked;
-        });
     }
 }
 
@@ -908,7 +855,6 @@ function resetPlane() {
  */
 window.addEventListener('DOMContentLoaded', () => {
     FlightSim();
-    initializeTimeControls();
     
     const resetButton = document.getElementById('reset');
     if (resetButton) {
